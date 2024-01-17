@@ -4,13 +4,25 @@
 #include <iostream>
 #include "display.hpp"
 
+String dialog[] = {
+    String("Hi, I'd like to hear a TCP joke."),
+    String("Hello, would you like to hear a TCP joke?"),
+    String("Yes, I'd like to hear a TCP joke."),
+    String("OK, I'll tell you a TCP joke."),
+    String("Ok, I will hear a TCP joke."),
+    String("Are you ready to hear a TCP joke?"),
+    String("Yes, I am ready to hear a TCP joke."),
+    String("Ok, I am about to send the TCP joke. It will last 10 seconds, it has two characters, it does not have a setting, it ends with a punchline."),
+    String("Ok, I am ready to get your TCP joke that will last 10 seconds, has two characters, does not have an explicit setting, and ends with a punchline."),
+    String("I'm sorry, your connection has timed out. Hello, would you like to hear a TCP joke?"),
+};
+
 uint8_t receiverAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 esp_now_peer_info_t peerInfo;
 
 typedef struct struct_message
 {
   bool master = false;
-  String message = "";
 } struct_message;
 
 struct_message dataToSend[10];
@@ -44,8 +56,8 @@ void loop()
 {
   if (dataToSend[step].master && isMaster)
   {
-    if (step > 9) {step = 2;}
-    sendData();
+    if (step >= 8) {step = 2;}
+    sendData(step + 1);
     delay(5000);
   }
 }
@@ -83,13 +95,13 @@ static void espNowAddPeerAddr()
 
 static void sendData()
 {
-  esp_err_t result = esp_now_send(receiverAddress, (uint8_t *)&dataToSend[step], sizeof(dataToSend[step]));
+  esp_err_t result = esp_now_send(receiverAddress, (uint8_t *)&dataToSend[step + 1], sizeof(dataToSend[step]));
   Serial.print("Sending: ");
-  Serial.println(dataToSend[step].message);
+  Serial.println(dialog[step]);
   Serial.print("On step: ");
   Serial.println(step);
   step += 1;
-  terminalTextDisplay(dataToSend[step].message, 1, 1, false);
+  terminalTextDisplay(dialog[step], 1, 1, false);
 }
 
 static void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
@@ -108,7 +120,7 @@ static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, 
   Serial.println(macStr);
   memcpy(&receivedData, incomingData, sizeof(receivedData));
   Serial.println(receivedData.master ? "Master: " : "Slave: ");
-  Serial.println(receivedData.message);
+  // Serial.println(dialog[step]);
 
   if (receivedData.master)
   {
@@ -118,8 +130,11 @@ static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, 
     }
 
     espNowAddPeerAddr();
-    if (step > 9) {step = 3;}
+    if (step >= 9) {step = 3;}
     sendData();
+  }
+  else {
+
   }
 }
 
@@ -144,22 +159,8 @@ static void espNowSetup()
   }
 }
 
-#define SPK1 "\x1b[31m"
-#define SPK2 "\x1b[33m"
-#define SPKEND "\x1b[0m"
 static void createJoke()
 {
-  dataToSend[0].message = SPK1 "Hi, I'd like to hear a TCP joke." SPKEND;
-  dataToSend[1].message = SPK2 "Hello, would you like to hear a TCP joke?" SPKEND;
-  dataToSend[2].message = SPK1 "Yes, I'd like to hear a TCP joke." SPKEND;
-  dataToSend[3].message = SPK2 "OK, I'll tell you a TCP joke." SPKEND;
-  dataToSend[4].message = SPK1 "Ok, I will hear a TCP joke." SPKEND;
-  dataToSend[5].message = SPK2 "Are you ready to hear a TCP joke?" SPKEND;
-  dataToSend[6].message = SPK1 "Yes, I am ready to hear a TCP joke." SPKEND;
-  dataToSend[7].message = SPK2 "Ok, I am about to send the TCP joke. It will last 10 seconds, it has two characters, it does not have a setting, it ends with a punchline." SPKEND;
-  dataToSend[8].message = SPK1 "Ok, I am ready to get your TCP joke that will last 10 seconds, has two characters, does not have an explicit setting, and ends with a punchline." SPKEND;
-  dataToSend[9].message = SPK2 "I'm sorry, your connection has timed out. Hello, would you like to hear a TCP joke?" SPKEND;
-
   for (int i = 0; i < 5; i += 1)
   {
     dataToSend[i * 2].master = true;
