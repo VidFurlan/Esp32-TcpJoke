@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <iostream>
+#include "display.hpp"
 
 uint8_t receiverAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 esp_now_peer_info_t peerInfo;
@@ -19,12 +20,41 @@ int step = 0;
 bool isMaster = false;
 bool hasMaster = false;
 
-/*See if esp is master or slave - if the
-desegnated pin has voltage its in master mode */
-static bool master_slave(int pin)
+static bool masterSlave(int pin);
+static void espNowAddPeerAddr();
+static void sendData();
+static void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
+static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
+static void espNowSetup();
+static void createJoke();
+
+void setup()
+{
+  Serial.begin(115200);  
+  Serial.print("\x1b[2J");
+
+  initDisplay();
+  //terminalTextDisplay("Hello world!", 1, 1, false);
+
+  createJoke();
+  espNowSetup();
+}
+
+void loop()
+{
+  if (dataToSend[step].master && isMaster)
+  {
+    if (step > 9) {step = 2;}
+    sendData();
+    delay(5000);
+  }
+}
+
+// See if ESP master or slave
+static bool masterSlave(int pin)
 {
   pinMode(pin, INPUT);
-
+  Serial.println(digitalRead(pin));
   if (digitalRead(pin))
   {
     Serial.println("ESP NOW set to master mode \n");
@@ -35,7 +65,7 @@ static bool master_slave(int pin)
   return false;
 }
 
-static void esp_now_add_peer_addr()
+static void espNowAddPeerAddr()
 {
   // Move the receaver address to the peerInfo var
   for (int i = 0; i < sizeof(receiverAddress); i++)
@@ -44,14 +74,14 @@ static void esp_now_add_peer_addr()
   }
   peerInfo.encrypt = false;
 
-  if (esp_now_add_peer(&peerInfo) != ESP_OK)
+  if (esp_now_add_peer(&peerInfo) != ESP_OK && isMaster)
   {
     Serial.println("Failed to add peer(s)");
     return;
   }
 }
 
-static void send_data()
+static void sendData()
 {
   esp_err_t result = esp_now_send(receiverAddress, (uint8_t *)&dataToSend[step], sizeof(dataToSend[step]));
   Serial.print("Sending: ");
@@ -59,15 +89,16 @@ static void send_data()
   Serial.print("On step: ");
   Serial.println(step);
   step += 1;
+  terminalTextDisplay(dataToSend[step].message, 1, 1, false);
 }
 
-static void on_data_sent(const uint8_t *mac_addr, esp_now_send_status_t status)
+static void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
   Serial.print("\r\nLast Packet Send Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Successful" : "Failed");
 }
 
-static void on_data_receive(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
+static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 {
   step += 1;
   char macStr[18];
@@ -86,13 +117,13 @@ static void on_data_receive(const uint8_t *mac_addr, const uint8_t *incomingData
       receiverAddress[i] = mac_addr[i];
     }
 
-    esp_now_add_peer_addr();
+    espNowAddPeerAddr();
     if (step > 9) {step = 3;}
-    send_data();
+    sendData();
   }
 }
 
-static void esp_now_setup()
+static void espNowSetup()
 {
   WiFi.mode(WIFI_STA);
 
@@ -101,20 +132,22 @@ static void esp_now_setup()
     Serial.println("Didn't initializr ESP NOW");
     return;
   }
+  Serial.println("ESP NOW setup complete");
 
-  esp_now_register_send_cb(on_data_sent);
-  esp_now_register_recv_cb(on_data_receive);
+  esp_now_register_send_cb(onDataSent);
+  esp_now_register_recv_cb(onDataReceive);
 
-  isMaster = master_slave(4);
+  isMaster = masterSlave(4);
   if (isMaster)
   {
-    esp_now_add_peer_addr();
+    espNowAddPeerAddr();
   }
 }
+
 #define SPK1 "\x1b[31m"
 #define SPK2 "\x1b[33m"
 #define SPKEND "\x1b[0m"
-static void create_joke()
+static void createJoke()
 {
   dataToSend[0].message = SPK1 "Hi, I'd like to hear a TCP joke." SPKEND;
   dataToSend[1].message = SPK2 "Hello, would you like to hear a TCP joke?" SPKEND;
@@ -130,23 +163,5 @@ static void create_joke()
   for (int i = 0; i < 5; i += 1)
   {
     dataToSend[i * 2].master = true;
-  }
-}
-
-void setup()
-{
-  Serial.begin(115200);
-  create_joke();
-  esp_now_setup();
-  Serial.print("\x1b[2J");
-}
-
-void loop()
-{
-  if (dataToSend[step].master && isMaster)
-  {
-    if (step > 9) {step = 2;}
-    send_data();
-    delay(5000);
   }
 }
