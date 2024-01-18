@@ -32,7 +32,7 @@ void terminalTextDisplay (String text, int curosr_x, int curosr_y, bool inversed
   String text_to_display = "> ";
   for (int i = 0; i < text.length(); i++) {
     text_to_display += text.charAt(i);
-    //Serial.print(text_to_display);
+    // Serial.print(text_to_display);
     displayText(text_to_display, curosr_x, curosr_y, inversed_colors); 
     delay(101);
   }

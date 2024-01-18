@@ -5,16 +5,16 @@
 #include "display.hpp"
 
 String dialog[] = {
-    String("Hi, I'd like to hear a TCP joke."),
-    String("Hello, would you like to hear a TCP joke?"),
-    String("Yes, I'd like to hear a TCP joke."),
+    String("Hi, I'd like to \nhear a TCP joke."),
+    String("Hello, would you \nlike to hear a \nTCP joke?"),
+    String("Yes, I'd like to \nhear a TCP joke."),
     String("OK, I'll tell you a TCP joke."),
-    String("Ok, I will hear a TCP joke."),
-    String("Are you ready to hear a TCP joke?"),
+    String("Ok, I will hear a \nTCP joke."),
+    String("Are you ready to \nhear a TCP joke?"),
     String("Yes, I am ready to hear a TCP joke."),
-    String("Ok, I am about to send the TCP joke. It will last 10 seconds, it has two characters, it does not have a setting, it ends with a punchline."),
-    String("Ok, I am ready to get your TCP joke that will last 10 seconds, has two characters, does not have an explicit setting, and ends with a punchline."),
-    String("I'm sorry, your connection has timed out. Hello, would you like to hear a TCP joke?"),
+    String("Ok, I am about to \nsend the TCP joke. \nIt will last 10 \nseconds, it has two \ncharacters, and it \nends with a \npunchline."),
+    String("Ok, I am ready to \nget your TCP joke \nthat will last 10 \nseconds, has two \ncharacters, and ends with a punchline."),
+    String("I'm sorry, your \nconnection has timed \nout. \n> Hello, would you \nlike to hear a TCP \njoke?"),
 };
 
 uint8_t receiverAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -54,10 +54,12 @@ void setup()
 
 void loop()
 {
+  if (step >= 9 && isMaster) 
+    step = 1;
+
   if (dataToSend[step].master && isMaster)
   {
-    if (step >= 8) {step = 2;}
-    sendData(step + 1);
+    sendData();
     delay(5000);
   }
 }
@@ -66,7 +68,7 @@ void loop()
 static bool masterSlave(int pin)
 {
   pinMode(pin, INPUT);
-  Serial.println(digitalRead(pin));
+  // Serial.println(digitalRead(pin));
   if (digitalRead(pin))
   {
     Serial.println("ESP NOW set to master mode \n");
@@ -95,13 +97,15 @@ static void espNowAddPeerAddr()
 
 static void sendData()
 {
-  esp_err_t result = esp_now_send(receiverAddress, (uint8_t *)&dataToSend[step + 1], sizeof(dataToSend[step]));
+  //if (master)
+    //dataToSend[step].master = true;
+  terminalTextDisplay(dialog[step], 1, 1, false);
+  esp_err_t result = esp_now_send(receiverAddress, (uint8_t *)&dataToSend[step], sizeof(dataToSend[step]));
   Serial.print("Sending: ");
   Serial.println(dialog[step]);
   Serial.print("On step: ");
   Serial.println(step);
   step += 1;
-  terminalTextDisplay(dialog[step], 1, 1, false);
 }
 
 static void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
@@ -130,8 +134,9 @@ static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, 
     }
 
     espNowAddPeerAddr();
-    if (step >= 9) {step = 3;}
     sendData();
+    if (step >= 9) {step = 2;}
+    // Serial.println("sending to master");
   }
   else {
 
