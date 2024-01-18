@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <iostream>
+#include <TimerEvent.h>
 #include "display.hpp"
 
 String dialog[] = {
@@ -32,6 +33,11 @@ int step = 0;
 bool isMaster = false;
 bool hasMaster = false;
 
+const unsigned int timeoutTimerPeriod = 30000;
+TimerEvent timeoutTimer;
+
+void timeoutCallback();
+
 static bool masterSlave(int pin);
 static void espNowAddPeerAddr();
 static void sendData();
@@ -45,6 +51,8 @@ void setup()
   Serial.begin(115200);  
   Serial.print("\x1b[2J");
 
+  timeoutTimer.set(timeoutTimerPeriod, timeoutCallback);
+
   initDisplay();
   //terminalTextDisplay("Hello world!", 1, 1, false);
 
@@ -54,6 +62,9 @@ void setup()
 
 void loop()
 {
+  if (isMaster)
+    timeoutTimer.update();
+
   if (step >= 9 && isMaster) 
     step = 1;
 
@@ -62,6 +73,13 @@ void loop()
     sendData();
     delay(5000);
   }
+}
+
+// Timeout callback (if master doesnt hear back from slave)
+void timeoutCallback() {
+  Serial.println("Timeout called!");
+  step -= 1;
+  sendData();
 }
 
 // See if ESP master or slave
@@ -116,6 +134,11 @@ static void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 
 static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 {
+  if (isMaster) {
+    timeoutTimer.reset();
+    Serial.println("Canceled timeout timer!");
+  }
+
   step += 1;
   char macStr[18];
   Serial.println("Packet received from: ");
