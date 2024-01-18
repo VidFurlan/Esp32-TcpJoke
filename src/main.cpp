@@ -2,6 +2,20 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <iostream>
+#include "display.hpp"
+
+String dialog[] = {
+    String("Hi, I'd like to \nhear a TCP joke."),
+    String("Hello, would you \nlike to hear a \nTCP joke?"),
+    String("Yes, I'd like to \nhear a TCP joke."),
+    String("OK, I'll tell you a TCP joke."),
+    String("Ok, I will hear a \nTCP joke."),
+    String("Are you ready to \nhear a TCP joke?"),
+    String("Yes, I am ready to hear a TCP joke."),
+    String("Ok, I am about to \nsend the TCP joke. \nIt will last 10 \nseconds, it has two \ncharacters, and it \nends with a \npunchline."),
+    String("Ok, I am ready to \nget your TCP joke \nthat will last 10 \nseconds, has two \ncharacters, and ends with a punchline."),
+    String("I'm sorry, your \nconnection has timed \nout. \n> Hello, would you \nlike to hear a TCP \njoke?"),
+};
 
 uint8_t receiverAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 esp_now_peer_info_t peerInfo;
@@ -9,7 +23,6 @@ esp_now_peer_info_t peerInfo;
 typedef struct struct_message
 {
   bool master = false;
-  String message = "";
 } struct_message;
 
 struct_message dataToSend[10];
@@ -19,12 +32,43 @@ int step = 0;
 bool isMaster = false;
 bool hasMaster = false;
 
-/*See if esp is master or slave - if the
-desegnated pin has voltage its in master mode */
-static bool master_slave(int pin)
+static bool masterSlave(int pin);
+static void espNowAddPeerAddr();
+static void sendData();
+static void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
+static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
+static void espNowSetup();
+static void createJoke();
+
+void setup()
+{
+  Serial.begin(115200);  
+  Serial.print("\x1b[2J");
+
+  initDisplay();
+  //terminalTextDisplay("Hello world!", 1, 1, false);
+
+  createJoke();
+  espNowSetup();
+}
+
+void loop()
+{
+  if (step >= 9 && isMaster) 
+    step = 1;
+
+  if (dataToSend[step].master && isMaster)
+  {
+    sendData();
+    delay(5000);
+  }
+}
+
+// See if ESP master or slave
+static bool masterSlave(int pin)
 {
   pinMode(pin, INPUT);
-
+  // Serial.println(digitalRead(pin));
   if (digitalRead(pin))
   {
     Serial.println("ESP NOW set to master mode \n");
@@ -35,7 +79,7 @@ static bool master_slave(int pin)
   return false;
 }
 
-static void esp_now_add_peer_addr()
+static void espNowAddPeerAddr()
 {
   // Move the receaver address to the peerInfo var
   for (int i = 0; i < sizeof(receiverAddress); i++)
@@ -44,30 +88,33 @@ static void esp_now_add_peer_addr()
   }
   peerInfo.encrypt = false;
 
-  if (esp_now_add_peer(&peerInfo) != ESP_OK)
+  if (esp_now_add_peer(&peerInfo) != ESP_OK && isMaster)
   {
     Serial.println("Failed to add peer(s)");
     return;
   }
 }
 
-static void send_data()
+static void sendData()
 {
+  //if (master)
+    //dataToSend[step].master = true;
+  terminalTextDisplay(dialog[step], 1, 1, false);
   esp_err_t result = esp_now_send(receiverAddress, (uint8_t *)&dataToSend[step], sizeof(dataToSend[step]));
   Serial.print("Sending: ");
-  Serial.println(dataToSend[step].message);
+  Serial.println(dialog[step]);
   Serial.print("On step: ");
   Serial.println(step);
   step += 1;
 }
 
-static void on_data_sent(const uint8_t *mac_addr, esp_now_send_status_t status)
+static void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
   Serial.print("\r\nLast Packet Send Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Successful" : "Failed");
 }
 
-static void on_data_receive(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
+static void onDataReceive(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 {
   step += 1;
   char macStr[18];
@@ -77,7 +124,7 @@ static void on_data_receive(const uint8_t *mac_addr, const uint8_t *incomingData
   Serial.println(macStr);
   memcpy(&receivedData, incomingData, sizeof(receivedData));
   Serial.println(receivedData.master ? "Master: " : "Slave: ");
-  Serial.println(receivedData.message);
+  // Serial.println(dialog[step]);
 
   if (receivedData.master)
   {
@@ -86,13 +133,17 @@ static void on_data_receive(const uint8_t *mac_addr, const uint8_t *incomingData
       receiverAddress[i] = mac_addr[i];
     }
 
-    esp_now_add_peer_addr();
-    if (step > 9) {step = 3;}
-    send_data();
+    espNowAddPeerAddr();
+    sendData();
+    if (step >= 9) {step = 2;}
+    // Serial.println("sending to master");
+  }
+  else {
+
   }
 }
 
-static void esp_now_setup()
+static void espNowSetup()
 {
   WiFi.mode(WIFI_STA);
 
@@ -101,52 +152,22 @@ static void esp_now_setup()
     Serial.println("Didn't initializr ESP NOW");
     return;
   }
+  Serial.println("ESP NOW setup complete");
 
-  esp_now_register_send_cb(on_data_sent);
-  esp_now_register_recv_cb(on_data_receive);
+  esp_now_register_send_cb(onDataSent);
+  esp_now_register_recv_cb(onDataReceive);
 
-  isMaster = master_slave(4);
+  isMaster = masterSlave(4);
   if (isMaster)
   {
-    esp_now_add_peer_addr();
+    espNowAddPeerAddr();
   }
 }
-#define SPK1 "\x1b[31m"
-#define SPK2 "\x1b[33m"
-#define SPKEND "\x1b[0m"
-static void create_joke()
-{
-  dataToSend[0].message = SPK1 "Hi, I'd like to hear a TCP joke." SPKEND;
-  dataToSend[1].message = SPK2 "Hello, would you like to hear a TCP joke?" SPKEND;
-  dataToSend[2].message = SPK1 "Yes, I'd like to hear a TCP joke." SPKEND;
-  dataToSend[3].message = SPK2 "OK, I'll tell you a TCP joke." SPKEND;
-  dataToSend[4].message = SPK1 "Ok, I will hear a TCP joke." SPKEND;
-  dataToSend[5].message = SPK2 "Are you ready to hear a TCP joke?" SPKEND;
-  dataToSend[6].message = SPK1 "Yes, I am ready to hear a TCP joke." SPKEND;
-  dataToSend[7].message = SPK2 "Ok, I am about to send the TCP joke. It will last 10 seconds, it has two characters, it does not have a setting, it ends with a punchline." SPKEND;
-  dataToSend[8].message = SPK1 "Ok, I am ready to get your TCP joke that will last 10 seconds, has two characters, does not have an explicit setting, and ends with a punchline." SPKEND;
-  dataToSend[9].message = SPK2 "I'm sorry, your connection has timed out. Hello, would you like to hear a TCP joke?" SPKEND;
 
+static void createJoke()
+{
   for (int i = 0; i < 5; i += 1)
   {
     dataToSend[i * 2].master = true;
-  }
-}
-
-void setup()
-{
-  Serial.begin(115200);
-  create_joke();
-  esp_now_setup();
-  Serial.print("\x1b[2J");
-}
-
-void loop()
-{
-  if (dataToSend[step].master && isMaster)
-  {
-    if (step > 9) {step = 2;}
-    send_data();
-    delay(5000);
   }
 }

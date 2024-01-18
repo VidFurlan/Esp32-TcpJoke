@@ -4,11 +4,10 @@ from threading import Thread
 from base64 import b64decode
 import sys
 import glob
-import serial
+from serial.tools.list_ports import comports
 from platformio import util
 import os
 
-print("jej")
 #print(env.Dump())
 print ("Current build targets", map(str, BUILD_TARGETS))
 
@@ -18,7 +17,8 @@ def run(port):
     for i in range (0,3):#try up to 3 times
         if(i>0):
             env.Replace(UPLOAD_SPEED="115200")#try slowing down baud
-        command = env.subst('$UPLOADCMD') +" "+ env.subst('$BUILD_DIR\$PROGNAME') +".bin"
+        command = env.subst('$UPLOADCMD') +" "+ env.subst('$BUILD_DIR/$PROGNAME') +".bin"
+        print(command)
         errorCode=env.Execute(command)
         if (errorCode==0):
             returnCodes.append((port,errorCode))
@@ -46,7 +46,9 @@ def after_build(source, target, env):
         print(ports)
         #ports = map(str.strip, b64decode(simultaneous_upload_ports).split(','))
         if(ports[0]=="AUTO"):
-            ports=serial_ports()
+            ports = []
+            for port in comports():
+                ports.append(port.device)
         print (("Uploading to " + str(ports)))
         for port in ports :
             port = port.strip()
@@ -54,7 +56,7 @@ def after_build(source, target, env):
             thread.start()
             threads.append(thread)
         for thread in threads:
-            thread.join()#wait for all threads to finish
+            thread.join() #wait for all threads to finish
         encounteredError=False
         sorted(returnCodes, key=lambda code: code[0])
         for code in returnCodes:
